@@ -1,0 +1,6 @@
+{
+  "name": "Master Deployment Agent",
+  "description": "Master Deployment Agent console for managing reproducible local Docker test deployments in PET Development.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
