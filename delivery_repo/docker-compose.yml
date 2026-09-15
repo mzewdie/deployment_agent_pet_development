@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  personal-expense-tracker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pet-app:local-test
+    container_name: pet-app-local
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Persist SQLite database outside the container across restarts
+      - pet-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  pet-data:
+    driver: local

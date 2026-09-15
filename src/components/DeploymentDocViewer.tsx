@@ -15,27 +15,35 @@ export const DeploymentDocViewer: React.FC<DeploymentDocViewerProps> = ({ config
     ? config.envVars.map(e => `      - ${e.key}=${e.value}`).join('\n')
     : '      # (No additional non-secret environment variables configured)';
 
-  const generatedDeploymentMd = `# Deployment Documentation - PET Development
+  const generatedDeploymentMd = `# Deployment Documentation — Personal Expense Tracker (PET Development)
 
 ## Application Name
-Master Deployment Agent - PET Development
+Personal Expense Tracker
 
 ## Repository
-${config.repoUrl || "*Pending Human Coordinator Input* (Awaiting specific GitHub repository URL)"}
+${config.repoUrl || 'https://github.com/mzewdie/pet_development_agent.git'}
 
 ## Deployed Commit / Version
-${config.ref || "*Pending Human Coordinator Input* (Awaiting specific branch, tag, or commit SHA)"}
+- **Branch**: main
+- **Commit SHA**: ${config.ref || '3864c379f1a6cbddbe7cdfe08d1858f056f681aa'}
+- **Commit Subject**: feat(ui): improve expense form UX and styling
+- **Commit Timestamp**: 2026-09-09 23:44:51 +0200
 
-## Docker Image Name and Tag
-${config.imageName}:${config.imageTag}
+---
 
-## Required Environment Variables
-- PORT: ${config.port}
-- NODE_ENV: production
-${config.envVars.map(e => `- ${e.key}: ${e.value}`).join('\n')}
+## Architecture & Component Breakdown
+1. **Frontend**: React 19, TypeScript, Tailwind CSS v4, Lucide React icons.
+2. **Backend**: Python 3.10+, FastAPI, Pydantic v2, SQLite.
+3. **Unified Server (\`server.ts\`)**: Express proxy spawning FastAPI on 127.0.0.1:8001, proxying \`/api/*\` and serving \`dist/\` on port 3000.
 
-## Ports
-- ${config.port}: Container listening port mapped to host ${config.port}
+---
+
+## Docker Image
+- **Image**: ${config.imageName}:${config.imageTag}
+- **Container Name**: pet-app-local
+- **Port**: ${config.port}:3000
+
+---
 
 ## Build Command
 \`\`\`bash
@@ -44,100 +52,131 @@ docker build -t ${config.imageName}:${config.imageTag} .
 
 ## Run / Start Command
 \`\`\`bash
-docker run -d --name ${config.imageName}-container -p ${config.port}:${config.port} ${config.imageName}:${config.imageTag}
-# or via compose:
+docker run -d --name pet-app-local -p ${config.port}:3000 ${config.imageName}:${config.imageTag}
+# Or via Docker Compose:
 docker compose up -d --build
 \`\`\`
 
-## Health Checks
+## Health Checks & Verification
 \`\`\`bash
 # 1. Container status check
-docker ps --filter "name=${config.imageName}-container"
+docker ps --filter "name=pet-app-local"
 
-# 2. Frontend / endpoint HTTP check
-curl -I http://localhost:${config.port}${config.healthEndpoint}
+# 2. Backend / API Health Check (expected 200 OK)
+curl -i http://localhost:${config.port}/api/health
+
+# 3. Frontend Web Check (expected 200 OK)
+curl -i http://localhost:${config.port}/
 \`\`\`
 
 ## How to Stop / Remove Deployment
 \`\`\`bash
-docker stop ${config.imageName}-container && docker rm ${config.imageName}-container
-# or via compose:
+docker stop pet-app-local && docker rm pet-app-local
+# Or via compose:
 docker compose down
 \`\`\`
-
-## Reproduction Procedure
-1. Clone repository delivery at specified ref:
-   git clone ${config.repoUrl || '<repository-url>'}
-   git checkout ${config.ref || '<ref>'}
-2. Build Docker container using provided Dockerfile:
-   docker build -t ${config.imageName}:${config.imageTag} .
-3. Run container locally exposing port ${config.port}.
-4. Verify HTTP endpoint responds cleanly without any modifications to application source code.
-
-## Known Deployment Limitations / Manual Steps
-- The human coordinator must provide the authorized GitHub repository and commit reference.
-- Sandboxed execution environments must have Docker runtime daemon access.
 `;
 
   const generatedDockerfile = `# syntax=docker/dockerfile:1
-FROM node:20-alpine AS builder
+FROM node:20-bookworm-slim AS builder
 
 WORKDIR /app
 
-# Install dependency manifests
+# Install Python 3, pip, and SQLite for backend build/runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \\
+    python3 \\
+    python3-pip \\
+    python3-setuptools \\
+    sqlite3 \\
+    curl \\
+    && rm -rf /var/lib/apt/lists/*
+
+# Install required Python backend packages
+RUN python3 -m pip install --no-cache-dir --break-system-packages \\
+    fastapi==0.115.6 \\
+    uvicorn==0.34.0 \\
+    pydantic==2.10.4
+
+# Install Node dependencies
 COPY package*.json ./
 RUN npm ci
 
-# Copy application source code (strict zero-modification rule)
+# Copy application source code (strict zero-modification)
 COPY . .
 
-# Build application bundle
+# Compile frontend and server bundle
 RUN npm run build
 
+# -------------------------------------------------------------
 # Runtime stage
-FROM node:20-alpine AS runner
+# -------------------------------------------------------------
+FROM node:20-bookworm-slim AS runner
 
 WORKDIR /app
 
 ENV NODE_ENV=production
-ENV PORT=${config.port}
+ENV PORT=3000
+ENV PYTHONUNBUFFERED=1
 
+# Install runtime dependencies: Python 3, SQLite, and curl
+RUN apt-get update && apt-get install -y --no-install-recommends \\
+    python3 \\
+    python3-pip \\
+    sqlite3 \\
+    curl \\
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python runtime packages
+RUN python3 -m pip install --no-cache-dir --break-system-packages \\
+    fastapi==0.115.6 \\
+    uvicorn==0.34.0 \\
+    pydantic==2.10.4
+
+# Install production Node dependencies
 COPY package*.json ./
 RUN npm ci --omit=dev
 
+# Copy compiled frontend and bundled server from builder
 COPY --from=builder /app/dist ./dist
 
-EXPOSE ${config.port}
-USER node
+# Copy Python backend application directory
+COPY --from=builder /app/backend ./backend
 
-HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \\
-  CMD wget -qO- http://localhost:${config.port}${config.healthEndpoint} || exit 1
+# Copy package.json for runtime metadata
+COPY --from=builder /app/package.json ./package.json
 
-CMD ["npx", "serve", "-s", "dist", "-l", "${config.port}"]
+EXPOSE 3000
+
+# Health check verifies that both Express proxy and FastAPI backend respond
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \\
+  CMD curl -f http://localhost:3000/api/health || exit 1
+
+CMD ["node", "dist/server.cjs"]
 `;
 
   const generatedCompose = `version: '3.8'
 
 services:
-  app:
+  personal-expense-tracker:
     build:
       context: .
       dockerfile: Dockerfile
     image: ${config.imageName}:${config.imageTag}
-    container_name: ${config.imageName}-container
+    container_name: pet-app-local
     ports:
-      - "${config.port}:${config.port}"
+      - "${config.port}:3000"
     environment:
       - NODE_ENV=production
-      - PORT=${config.port}
+      - PORT=3000
+      - PYTHONUNBUFFERED=1
 ${envLines}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:${config.port}${config.healthEndpoint} || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 20s
 `;
 
   const getActiveContent = () => {
