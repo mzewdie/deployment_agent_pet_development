@@ -20,7 +20,7 @@ RUN python3 -m pip install --no-cache-dir --break-system-packages \
 
 # Install Node dependencies
 COPY package*.json ./
-RUN npm ci
+RUN if [ -f package-lock.json ]; then npm ci || npm install; else npm install; fi
 
 # Copy application source code (strict zero-modification)
 COPY . .
@@ -55,7 +55,7 @@ RUN python3 -m pip install --no-cache-dir --break-system-packages \
 
 # Install production Node dependencies
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev || npm install --omit=dev; else npm install --omit=dev; fi
 
 # Copy compiled frontend and bundled server from builder
 COPY --from=builder /app/dist ./dist
