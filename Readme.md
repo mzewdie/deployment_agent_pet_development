@@ -3,6 +3,7 @@
 > **Automated Containerization, Deployment Orchestration, and Zero-Modification Verification for the Personal Expense Tracker (PET)**
 
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
+[![Port](https://img.shields.io/badge/Host_Port-3002-green.svg)](#6-quick-start-docker-deployment-recommended)
 [![React 19](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com/)
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933.svg)](https://nodejs.org/)
@@ -11,18 +12,19 @@
 ---
 
 ## Table of Contents
-1. [Overview](#overview)
-2. [Delivered Application Specification](#delivered-application-specification)
-3. [Architecture Breakdown](#architecture-breakdown)
-4. [Repository Structure](#repository-structure)
-5. [Prerequisites](#prerequisites)
-6. [Quick Start: Docker Deployment (Recommended)](#quick-start-docker-deployment-recommended)
-7. [Alternative: Bare-Metal Local Execution](#alternative-bare-metal-local-execution)
-8. [Running the Deployment Agent Dashboard](#running-the-deployment-agent-dashboard)
-9. [Verification & Health Checks](#verification--health-checks)
-10. [Configuration & Environment Variables](#configuration--environment-variables)
-11. [Strict Zero-Modification Guarantee](#strict-zero-modification-guarantee)
-12. [Troubleshooting & FAQ](#troubleshooting--faq)
+1. [Overview](#1-overview)
+2. [Delivered Application Specification](#2-delivered-application-specification)
+3. [Architecture & Port Allocation Strategy (Port 3002)](#3-architecture--port-allocation-strategy-port-3002)
+4. [Master Deployment Dashboard (Interactive Console)](#4-master-deployment-dashboard-interactive-console)
+5. [Repository Structure](#5-repository-structure)
+6. [Prerequisites](#6-prerequisites)
+7. [Quick Start: Docker Deployment (Recommended)](#7-quick-start-docker-deployment-recommended)
+8. [Alternative: Bare-Metal Local Execution](#8-alternative-bare-metal-local-execution)
+9. [Running the Deployment Agent Dashboard Locally](#9-running-the-deployment-agent-dashboard-locally)
+10. [Verification & Health Checks](#10-verification--health-checks)
+11. [Configuration & Environment Variables](#11-configuration--environment-variables)
+12. [Strict Zero-Modification Guarantee](#12-strict-zero-modification-guarantee)
+13. [Troubleshooting & FAQ](#13-troubleshooting--faq)
 
 ---
 
@@ -32,9 +34,10 @@ This project provides an automated, reproducible deployment system and live veri
 
 Key responsibilities fulfilled by this project:
 - **Zero-Modification Packaging**: Generates production-ready Docker deployment artifacts (`Dockerfile`, `docker-compose.yml`, `.dockerignore`) without altering any delivered application source code or documentation.
+- **Port Conflict Protection (Port 3002)**: Configured with host port `3002` (mapped to container port `3000`) so the containerized application can run concurrently alongside local development servers that use port 3000.
 - **Unified Multi-Runtime Orchestration**: Builds and runs a containerized dual-runtime environment containing both Node.js (Vite frontend + Express reverse proxy) and Python (FastAPI + SQLite).
 - **Automated Verification Harness**: Validates build pipelines, internal inter-process communication, API health status, and UI serving.
-- **Interactive Deployment Dashboard**: Provides a real-time web console displaying verification checks, build stage progression, raw logs, and deployment documentation.
+- **Interactive Deployment Dashboard**: A real-time web console displaying verification checks, build stage progression, raw logs, and deployment documentation.
 
 ---
 
@@ -54,89 +57,148 @@ The delivery deployed and verified by this system is sourced from the official d
 
 ---
 
-## 3. Architecture Breakdown
+## 3. Architecture & Port Allocation Strategy (Port 3002)
 
-The delivered application follows a cohesive full-stack architecture running behind a single unified port (`3000`):
+### Why Host Port 3002?
+Standard development environments (Vite, Next.js, Create React App, Express) frequently bind to port `3000`. To prevent frustrating port-binding collisions (`EADDRINUSE`) when developers or testing coordinators run local services simultaneously:
+- **Host Interface**: Mapped to **`3002`** (accessible at `http://localhost:3002`).
+- **Container Interface**: Operates on port **`3000`** internally, preserving strict zero-modification compliance with the delivered application's `server.ts`.
+- **Backend Internal Interface**: Python FastAPI binds strictly to **`127.0.0.1:8001`** inside the container and is never exposed directly to the outside network.
 
 ```
-                        [ Client / Browser ]
-                                 │
-                         HTTP Port 3000
-                                 ▼
-         ┌─────────────────────────────────────────────────┐
-         │              Docker Container                   │
-         │                                                 │
-         │   ┌─────────────────────────────────────────┐   │
-         │   │   Unified Express Server (server.ts)    │   │
-         │   └──────┬───────────────────────────┬──────┘   │
-         │          │                           │          │
-         │  Routes: /api/*, /docs               │ All other│
-         │          │                           │ routes   │
-         │          ▼                           ▼          │
-         │   ┌────────────────────┐    ┌───────────────┐   │
-         │   │  FastAPI Backend   │    │ Static Assets │   │
-         │   │ (127.0.0.1:8001)   │    │ (dist/)       │   │
-         │   └────────┬───────────┘    │ React 19 SPA  │   │
-         │            │                └───────────────┘   │
-         │            ▼                                    │
-         │   ┌────────────────────┐                        │
-         │   │  SQLite Database   │                        │
-         │   │   (expenses.db)    │                        │
-         │   └────────────────────┘                        │
-         └─────────────────────────────────────────────────┘
+                  [ Host Machine / Coordinator Browser ]
+                                     │
+                             HTTP Port 3002
+                                     ▼
+         ┌─────────────────────────────────────────────────────────┐
+         │                 Docker Container                        │
+         │           (Mapped: -p 3002:3000)                        │
+         │                                                         │
+         │   ┌─────────────────────────────────────────────────┐   │
+         │   │   Unified Express Server (server.ts)            │   │
+         │   │   Listens internally on Port 3000               │   │
+         │   └──────┬───────────────────────────────────┬──────┘   │
+         │          │                                   │          │
+         │  Routes: /api/*, /docs                       │ Static   │
+         │  (Reverse proxy to localhost:8001)           │ files    │
+         │          │                                   │ (dist/)  │
+         │          ▼                                   ▼          │
+         │   ┌────────────────────────────┐    ┌───────────────┐   │
+         │   │  FastAPI Backend (Python)  │    │ React 19 SPA  │   │
+         │   │  Bound to 127.0.0.1:8001   │    │ Static Assets │   │
+         │   └──────────────┬─────────────┘    └───────────────┘   │
+         │                  │                                      │
+         │                  ▼                                      │
+         │   ┌────────────────────────────┐                        │
+         │   │      SQLite Database       │                        │
+         │   │   (/app/data/expenses.db)  │                        │
+         │   └────────────────────────────┘                        │
+         └─────────────────────────────────────────────────────────┘
 ```
-
-1. **Frontend (React 19 + TypeScript + Tailwind CSS v4)**:
-   - Client-side single page application built with Vite.
-   - Interactive expense management, categorisation, filtering, and summary statistics.
-2. **Backend (Python 3.10+ + FastAPI + Pydantic v2)**:
-   - High-performance asynchronous REST API.
-   - Manages CRUD operations for expenses, analytics aggregation, and validation.
-   - SQLite persistence layer configured with Write-Ahead Logging (WAL) and foreign key integrity.
-3. **Unified Server (`server.ts` compiled to `dist/server.cjs`)**:
-   - Express server acting as a reverse proxy and static asset server.
-   - Automatically launches and monitors the Python FastAPI backend process on `127.0.0.1:8001`.
-   - Proxies `/api/*`, `/docs`, and `/openapi.json` to FastAPI.
-   - Serves the compiled React frontend for all other requests.
 
 ---
 
-## 4. Repository Structure
+## 4. Master Deployment Dashboard (Interactive Console)
+
+This project features an interactive, real-time **Master Deployment Dashboard** accessible via the browser. It provides total operational observability over the deployment lifecycle, automated verification, container configurations, and execution logs.
+
+```
+┌────────────────────────────────────────────────────────────────────────────────┐
+│  MASTER DEPLOYMENT AGENT       [ SUCCESS ]  Target: Docker Engine / Compose    │
+├────────────────────────────────────────────────────────────────────────────────┤
+│  STATUS: SUCCESS — Verified Operational (Commit: 3864c379... / Main)          │
+├────────────────────────────────────────────────────────────────────────────────┤
+│  WORKFLOW WIZARD:                                                              │
+│  [1. UNDERSTAND] → [2. INGEST] → [3. IDENTIFY REF] → ... → [10. REPORT]        │
+├──────────────────────────────────────┬─────────────────────────────────────────┤
+│  5-POINT VERIFICATION MATRIX         │  COORDINATOR CONFIGURATION FORM         │
+│  ✔ Containers Start                  │  Repo: https://github.com/.../pet_...   │
+│  ✔ Required Ports Bound (Port 3002)  │  Commit Ref: 3864c379f1...             │
+│  ✔ Frontend Responds                 │  Host Port: 3002                        │
+│  ✔ API Health Endpoint Responds      │  Image: pet-app:local-test              │
+│  ✔ Required Services Communicate     │  [ Re-run Verification Pipeline ]       │
+├──────────────────────────────────────┴─────────────────────────────────────────┤
+│  DEPLOYMENT ARTIFACTS & AUDIT LOGS                                             │
+│  [ Dockerfile ]  [ docker-compose.yml ]  [ DEPLOYMENT.md ]  [ Spec ]  [ Logs ] │
+│  (One-click clipboard copy, syntax highlighted previews, and runtime logs)     │
+└────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Dashboard Core Capabilities:
+
+1. **Live Deployment Status & Target Banner**:
+   - Dynamic health indicator showing `SUCCESS`, `BUILDING`, or `AWAITING_INPUT`.
+   - Authoritative delivery repository metadata, target commit SHA, and zero-modification guarantee status.
+
+2. **10-Step Workflow Lifecycle Tracker**:
+   - Visual progress pipeline tracing:
+     `UNDERSTAND` → `INGEST` → `IDENTIFY REF` → `PREPARE` → `INSPECT` → `BUILD DOCKER` → `RUN CONTAINER` → `VERIFY HEALTH` → `DOCUMENT` → `REPORT`.
+   - Highlights the current stage and displays detailed descriptions of the automated tasks completed at each phase.
+
+3. **5-Point Verification Matrix**:
+   - **Containers Start**: Confirms Node 20 & Python 3.10 multi-stage container readiness with entrypoint `node dist/server.cjs`.
+   - **Required Ports Bound (Port 3002)**: Validates host port `3002` mapped to container `3000` to avoid local dev port collisions, with internal FastAPI loopback on `127.0.0.1:8001`.
+   - **Frontend Responds**: Confirms Vite production bundle generation (`dist/index.html`, CSS, and JavaScript bundles).
+   - **API Health Endpoint Responds**: Verifies FastAPI `/api/health` returns `HTTP 200 OK` with SQLite database connectivity.
+   - **Required Services Communicate**: Validates the internal Express reverse-proxy communication with FastAPI.
+
+4. **Coordinator Delivery Intake & Controller**:
+   - Allows human coordinators to review or change the repository URL, commit/branch ref, Docker image name, host port (`3002`), and environment variables.
+   - Includes a **"Re-run Verification Pipeline"** button to simulate and re-verify the deployment steps dynamically.
+
+5. **Multi-Tab Artifact & Runbook Inspector**:
+   - Interactive tabbed viewer with one-click clipboard copy for:
+     - `Dockerfile` (Multi-stage build recipe).
+     - `docker-compose.yml` (Compose orchestration with `3002:3000` port mapping and persistent volumes).
+     - `DEPLOYMENT.md` (Self-contained reproduction runbook and operational checklist).
+     - `specification_deployment.md` (Official deployment protocol standards).
+
+6. **Chronological Audit Log Stream**:
+   - Timestamped log entries recording each stage of execution (`INIT`, `INTEGRITY`, `CLONE`, `VERSION`, `INSPECT`, `BACKEND`, `BUILD`, `DOCKER`, `DOCUMENT`).
+   - Visual log tags distinguishing info, success, and warning levels.
+
+7. **Formal Markdown Deployment Report**:
+   - Formatted view and raw Markdown export generating formal deployment audit documentation for stakeholders and coordinators.
+
+---
+
+## 5. Repository Structure
 
 ```
 ├── Dockerfile                   # Multi-stage production container build definition
-├── docker-compose.yml           # Compose orchestration with SQLite data volume
+├── docker-compose.yml           # Compose orchestration with 3002:3000 port mapping & volume
 ├── .dockerignore                # Build context exclusion rules
 ├── DEPLOYMENT.md                # Formal deployment manual & verification log
-├── README.md                    # Project documentation
+├── README.md                    # Project documentation (this file)
 ├── specification_deployment.md  # Formal deployment protocol & verification standards
 ├── package.json                 # Dashboard UI dependencies and build scripts
 ├── vite.config.ts               # Vite bundler configuration for the dashboard
 ├── index.html                   # Entry point for the deployment dashboard
 ├── src/                         # Deployment Agent Dashboard source code
-│   ├── App.tsx                  # Main console view with tabs & controls
+│   ├── App.tsx                  # Main console view, state management & layout
 │   ├── types.ts                 # Shared TypeScript interfaces & models
 │   └── components/
-│       ├── Header.tsx           # Status badge and action bar
-│       ├── VerificationList.tsx # 5-point verification matrix
+│       ├── Header.tsx           # Status badge, target system, and action controls
+│       ├── VerificationList.tsx # 5-point verification matrix with status chips
 │       ├── DeploymentDocViewer.tsx # Interactive viewer for Dockerfile, compose, DEPLOYMENT.md
 │       ├── ReportViewer.tsx     # Formal markdown deployment report generator
 │       ├── StepWizard.tsx       # 10-step deployment pipeline tracker
+│       ├── DeploymentForm.tsx   # Coordinator configuration and execution triggers
 │       └── LogViewer.tsx        # Structured deployment event stream
 └── delivery_repo/               # The delivered application clone (Strict zero-modification)
     ├── backend/                 # FastAPI backend application & SQLite queries
     ├── src/                     # React application source code
     ├── server.ts                # Express reverse proxy and process supervisor
     ├── package.json             # Application dependencies & build pipeline
-    ├── Readme.md                # Delivered application readme (unmodified)
+    ├── Readme.md                # Delivered application readme (strictly unmodified)
     └── tests/                   # Pytest backend test suite
 ```
 
 ---
 
-## 5. Prerequisites
+## 6. Prerequisites
 
-Before executing the project, ensure your host machine has the following tools installed:
+Ensure your host machine has the following tools installed:
 
 ### For Docker Deployment (Recommended)
 - **Docker Engine**: version 24.0 or later
@@ -150,24 +212,21 @@ Before executing the project, ensure your host machine has the following tools i
 
 ---
 
-## 6. Quick Start: Docker Deployment (Recommended)
+## 7. Quick Start: Docker Deployment (Recommended)
 
-The application has been fully containerized using a clean, reproducible multi-stage build.
+The application is deployed on host port **`3002`** to avoid port collisions with your local development tools.
 
 ### Method A: Using Docker Compose
 
 ```bash
-# 1. Clone or navigate to the project directory
-cd /path/to/project
-
-# 2. Build and launch the container in the background
+# 1. Build and launch the container in the background
 docker compose up -d --build
 
-# 3. View container startup logs
+# 2. View container startup logs
 docker compose logs -f
 
-# 4. Verify deployment health
-curl -i http://localhost:3000/api/health
+# 3. Verify deployment health on port 3002
+curl -i http://localhost:3002/api/health
 ```
 
 ### Method B: Using Standalone Docker CLI
@@ -176,18 +235,18 @@ curl -i http://localhost:3000/api/health
 # 1. Build the production Docker image
 docker build -t pet-app:local-test .
 
-# 2. Run the container exposing port 3000
+# 2. Run the container exposing host port 3002
 docker run -d \
   --name pet-app-local \
-  -p 3000:3000 \
+  -p 3002:3000 \
   -v pet-data:/app/data \
   pet-app:local-test
 
 # 3. Check container logs
 docker logs -f pet-app-local
 
-# 4. Verify deployment health
-curl -i http://localhost:3000/api/health
+# 4. Verify deployment health on port 3002
+curl -i http://localhost:3002/api/health
 ```
 
 ### Stopping and Cleaning Up
@@ -201,7 +260,7 @@ docker stop pet-app-local && docker rm pet-app-local
 
 ---
 
-## 7. Alternative: Bare-Metal Local Execution
+## 8. Alternative: Bare-Metal Local Execution
 
 If you wish to execute the delivered application directly on your host machine without Docker:
 
@@ -210,7 +269,7 @@ If you wish to execute the delivered application directly on your host machine w
 # Navigate to the delivered repository
 cd delivery_repo
 
-# Create and activate a Python virtual environment (recommended)
+# Create and activate a Python virtual environment
 python3 -m venv venv
 source venv/bin/activate
 
@@ -232,15 +291,13 @@ npm run build
 # Run the bundled production server
 node dist/server.cjs
 ```
-*The Express server will automatically start the FastAPI backend on port `8001`, establish database connections, and serve the application on `http://localhost:3000`.*
+*Note: In bare-metal mode, the delivered server defaults to port 3000. In containerized mode (Docker), host port 3002 is mapped automatically.*
 
 ---
 
-## 8. Running the Deployment Agent Dashboard
+## 9. Running the Deployment Agent Dashboard Locally
 
-This workspace includes an interactive, browser-based **Master Deployment Console** built with React and Tailwind CSS. The console visualizes the deployment lifecycle, verification steps, and operational health.
-
-To launch the dashboard:
+To run the interactive Deployment Dashboard on your local machine:
 
 ```bash
 # 1. Install dashboard dependencies
@@ -250,22 +307,17 @@ npm install
 npm run dev
 ```
 
-Open your browser to `http://localhost:3000` to interact with:
-- **Verification Matrix**: Real-time status of container startup, port binding, frontend availability, API health, and inter-service routing.
-- **Step Wizard**: Interactive 10-stage execution pipeline.
-- **Artifact Inspector**: Live tabbed viewer for `Dockerfile`, `docker-compose.yml`, and `DEPLOYMENT.md` with one-click copy.
-- **Audit Logs**: Chronological timestamped event stream of all deployment actions.
-- **Formal Deployment Report**: Generate and export full markdown deployment audits.
+Open your browser to `http://localhost:3000` (in the agent sandbox, Vite runs on port 3000 for the preview interface).
 
 ---
 
-## 9. Verification & Health Checks
+## 10. Verification & Health Checks
 
-Once running, execute the following commands to confirm that all layers of the application are fully functional:
+Once the Docker container is running, execute the following commands to verify all layers:
 
-### 1. API Health Check
+### 1. API Health Check (Port 3002)
 ```bash
-curl -i http://localhost:3000/api/health
+curl -i http://localhost:3002/api/health
 ```
 **Expected Response:**
 ```http
@@ -275,9 +327,9 @@ Content-Type: application/json
 {"status":"healthy","service":"Personal Expense Tracker API","version":"1.0.0","database":"SQLite","expense_count":0}
 ```
 
-### 2. Frontend Root Verification
+### 2. Frontend Web Application Verification (Port 3002)
 ```bash
-curl -i http://localhost:3000/
+curl -i http://localhost:3002/
 ```
 **Expected Response:**
 ```http
@@ -291,7 +343,7 @@ Content-Type: text/html; charset=UTF-8
 ```
 
 ### 3. Interactive OpenAPI Documentation (Swagger UI)
-Visit `http://localhost:3000/docs` in your browser to inspect and test the interactive API endpoints.
+Visit `http://localhost:3002/docs` in your browser to test the interactive API endpoints.
 
 ### 4. Running Backend Unit Tests (Pytest)
 ```bash
@@ -301,20 +353,19 @@ python3 -m pytest tests/
 
 ---
 
-## 10. Configuration & Environment Variables
-
-The deployment requires zero mandatory secrets. The following standard environment variables are configured:
+## 11. Configuration & Environment Variables
 
 | Variable | Default Value | Description |
 | :--- | :--- | :--- |
-| `PORT` | `3000` | Port on which the unified Express server listens. |
+| `PORT` (Container) | `3000` | Port on which the unified Express server listens inside the container. |
+| **Host Port** | **`3002`** | Port bound on the host machine to avoid collisions with dev port 3000. |
 | `NODE_ENV` | `production` | Node execution environment mode. |
 | `PYTHONUNBUFFERED` | `1` | Ensures Python logs are flushed to standard output immediately. |
 | `EXPENSE_DB_PATH` | `./expenses.db` | *(Optional)* Custom filesystem path for SQLite database file. |
 
 ---
 
-## 11. Strict Zero-Modification Guarantee
+## 12. Strict Zero-Modification Guarantee
 
 Per deployment safety guidelines:
 1. **Application Source Code**: `backend/`, `src/`, `server.ts`, and `tests/` in the delivery repository were **not altered**.
@@ -323,15 +374,16 @@ Per deployment safety guidelines:
 
 ---
 
-## 12. Troubleshooting & FAQ
+## 13. Troubleshooting & FAQ
 
-### Q: Port 3000 is already in use on my machine. How can I run the container?
-**A**: When running the container, map a different host port to the container's port 3000:
+### Q: Why is host port 3002 used instead of 3000?
+**A**: Port 3000 is widely used as the default by development servers (Vite, Next.js, CRA, Express). Using host port **3002** allows the containerized production app to run simultaneously alongside any active development environments without port conflict errors (`EADDRINUSE`).
+
+### Q: Can I change the host port to another port (e.g., 8080)?
+**A**: Yes. You can change the port mapping in `docker-compose.yml` (e.g. `"8080:3000"`) or via Docker CLI:
 ```bash
-# Map host port 8080 to container port 3000
 docker run -d --name pet-app-local -p 8080:3000 pet-app:local-test
 ```
-You can then access the application at `http://localhost:8080`.
 
 ### Q: Does the SQLite database persist when the Docker container restarts?
 **A**: Yes. The `docker-compose.yml` mounts a persistent Docker volume (`pet-data`) to `/app/data` to ensure all logged expenses and categories survive container restarts and updates.

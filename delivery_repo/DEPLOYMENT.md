@@ -119,7 +119,7 @@ services:
     image: pet-app:local-test
     container_name: pet-app-local
     ports:
-      - "3000:3000"
+      - "3002:3000"
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -138,15 +138,16 @@ services:
 ## Required Environment Variables
 *(No secret values required)*
 - `NODE_ENV`: `production`
-- `PORT`: `3000` (Default application listening port)
+- `PORT`: `3000` (Default application listening port inside the container)
 - `PYTHONUNBUFFERED`: `1` (Ensures real-time Python logging)
 - `EXPENSE_DB_PATH`: *(Optional)* Custom path to SQLite database (defaults to `expenses.db` in working directory).
 
 ---
 
 ## Ports
-- `3000`: Primary unified application port (serves React frontend and proxies `/api/*` to FastAPI backend).
-- `8001`: Internal localhost port for FastAPI (bound to `127.0.0.1` inside container, not exposed externally).
+- `3002` (Host): Host-mapped port (`3002:3000`) chosen specifically to prevent port collision with host-level development servers using default port 3000.
+- `3000` (Container): Unified container port (serves React frontend and proxies `/api/*` to FastAPI backend).
+- `8001` (Internal): Internal loopback port for FastAPI (bound strictly to `127.0.0.1` inside container, never exposed externally).
 
 ---
 
@@ -161,7 +162,7 @@ docker build -t pet-app:local-test .
 ```bash
 docker run -d \
   --name pet-app-local \
-  -p 3000:3000 \
+  -p 3002:3000 \
   pet-app:local-test
 ```
 
@@ -182,7 +183,7 @@ docker ps --filter "name=pet-app-local"
 
 ### 2. Check Backend API Health Endpoint
 ```bash
-curl -i http://localhost:3000/api/health
+curl -i http://localhost:3002/api/health
 ```
 *Expected Output*:
 ```http
@@ -194,7 +195,7 @@ Content-Type: application/json
 
 ### 3. Check Frontend Response
 ```bash
-curl -i http://localhost:3000/
+curl -i http://localhost:3002/
 ```
 *Expected Output*:
 ```http
@@ -206,7 +207,7 @@ Content-Type: text/html; charset=UTF-8
 
 ### 4. Interactive OpenAPI Docs Check
 ```bash
-curl -i http://localhost:3000/docs
+curl -i http://localhost:3002/docs
 ```
 *Expected Output*: HTTP 200 with Swagger UI.
 

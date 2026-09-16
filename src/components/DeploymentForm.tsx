@@ -47,8 +47,12 @@ export const DeploymentForm: React.FC<DeploymentFormProps> = ({
             Provide the delivery repository and deployment coordinates.
           </p>
         </div>
-        <span className="text-[11px] font-mono px-2.5 py-1 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30">
-          Awaiting Coordinator Input
+        <span className={`text-[11px] font-mono px-2.5 py-1 rounded border ${
+          config.repoUrl
+            ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+            : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+        }`}>
+          {config.repoUrl ? 'Delivery Received & Configured' : 'Awaiting Coordinator Input'}
         </span>
       </div>
 

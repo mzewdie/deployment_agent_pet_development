@@ -17,7 +17,7 @@ export default function App() {
     ref: '3864c379f1a6cbddbe7cdfe08d1858f056f681aa',
     imageName: 'pet-app',
     imageTag: 'local-test',
-    port: 3000,
+    port: 3002,
     envVars: [
       { key: 'NODE_ENV', value: 'production' },
       { key: 'PYTHONUNBUFFERED', value: '1' }
@@ -36,7 +36,7 @@ export default function App() {
     {
       id: 'ports_available',
       label: 'Required Ports Bound',
-      description: 'Unified application port 3000 mapped; internal FastAPI port 8001 proxied cleanly.',
+      description: 'Host port 3002 mapped to container port 3000 (prevents conflicts with dev port 3000); FastAPI port 8001 proxied internally.',
       status: 'passed',
     },
     {
@@ -238,16 +238,34 @@ export default function App() {
 
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
         {/* Status Callout Banner */}
-        <div className="bg-gradient-to-r from-slate-900 to-slate-900/60 border border-slate-800 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className={`border rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all ${
+          status === 'SUCCESS'
+            ? 'bg-gradient-to-r from-emerald-950/40 via-slate-900 to-slate-900/80 border-emerald-500/30'
+            : status === 'BUILDING' || status === 'RUNNING'
+            ? 'bg-gradient-to-r from-blue-950/40 via-slate-900 to-slate-900/80 border-blue-500/30'
+            : 'bg-gradient-to-r from-slate-900 to-slate-900/60 border-slate-800'
+        }`}>
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
-              <h2 className="text-sm font-semibold font-mono text-slate-200 uppercase">
-                Awaiting Human Coordinator Delivery Input
+              <span className={`w-2.5 h-2.5 rounded-full ${
+                status === 'SUCCESS'
+                  ? 'bg-emerald-400 ring-4 ring-emerald-500/20'
+                  : status === 'BUILDING' || status === 'RUNNING'
+                  ? 'bg-blue-400 animate-ping'
+                  : 'bg-amber-400 animate-ping'
+              }`} />
+              <h2 className="text-sm font-semibold font-mono text-slate-100 uppercase flex items-center gap-2">
+                {status === 'SUCCESS'
+                  ? 'Deployment Status: SUCCESS — Verified Operational'
+                  : status === 'BUILDING' || status === 'RUNNING'
+                  ? 'Executing Automated Deployment Pipeline...'
+                  : 'Awaiting Human Coordinator Delivery Input'}
               </h2>
             </div>
             <p className="text-xs text-slate-400">
-              Please provide the application delivery GitHub repository URL and specific commit or branch. The agent will construct the reproducible Docker test deployment without modifying the application source.
+              {status === 'SUCCESS'
+                ? 'Delivery repository verified: https://github.com/mzewdie/pet_development_agent.git at commit 3864c379f1a6cbddbe7cdfe08d1858f056f681aa. All 5 deployment verification criteria PASSED with 0 source modifications.'
+                : 'Please provide the application delivery GitHub repository URL and specific commit or branch. The agent will construct the reproducible Docker test deployment without modifying the application source.'}
             </p>
           </div>
           <div className="shrink-0 flex items-center gap-3">

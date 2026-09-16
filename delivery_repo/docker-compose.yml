@@ -8,7 +8,7 @@ services:
     image: pet-app:local-test
     container_name: pet-app-local
     ports:
-      - "3000:3000"
+      - "3002:3000"
     environment:
       - NODE_ENV=production
       - PORT=3000
