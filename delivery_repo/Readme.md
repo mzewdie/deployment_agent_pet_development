@@ -342,3 +342,151 @@ Before submitting your changes:
 - [ ] Production build compiles: `npm run build`
 - [ ] Multi-currency totals remain strictly separated (no blind aggregate sums)
 - [ ] Documentation updated if REST endpoints changed
+
+---
+
+## 11. Master Deployment Dashboard & Docker Deployment Strategy
+
+To prevent port collisions with standard development servers that frequently occupy port `3000`, this project uses a strict multi-port isolation strategy:
+
+| Component | Port | Interface | Purpose |
+| :--- | :--- | :--- | :--- |
+| **Default Port 3000** | `3000` | *Avoided on Host* | Internal container listening port; avoided on host machine to prevent collisions. |
+| **Deployment Dashboard** | **`3002`** | `http://localhost:3002` | Local interactive web console for monitoring deployment & verification. |
+| **Docker Application** | **`3003`** | `http://localhost:3003` | Host-mapped container port (`3003:3000`) for the containerized application. |
+| **FastAPI Backend** | `8001` | `127.0.0.1:8001` | Internal container loopback only; proxied by Express. |
+
+---
+
+### How to Start the Master Deployment Dashboard (Port 3002)
+
+No Python `venv` is required to run the dashboard. It is a React 19 + TypeScript application served via Vite:
+
+```bash
+# 1. Install dashboard dependencies
+npm install
+
+# 2. Start the dashboard on port 3002 (avoids port 3000)
+npm run dev:local
+# Or alternatively: npm run dev -- --port 3002
+```
+
+Once started, open your browser to:
+👉 **`http://localhost:3002`**
+
+---
+
+### Running the Containerized Application (Port 3003)
+
+The production full-stack application runs inside a Docker container mapped to host port **`3003`**:
+
+```bash
+# Build and run the containerized app in the background
+docker compose up -d --build
+
+# Verify container health on port 3003
+curl http://localhost:3003/api/health
+
+# Open the application in your browser:
+# Frontend:     http://localhost:3003/
+# Swagger Docs: http://localhost:3003/docs
+```
+
+---
+
+## 12. Detailed Breakdown: What Happens When Docker Compose Runs?
+
+When you execute `docker compose up -d --build`, the system orchestrates an 8-phase execution sequence:
+
+```
+                  [ Host Machine / Browser ]
+                     │                    │
+              HTTP Port 3002        HTTP Port 3003
+                     │                    │
+                     ▼                    ▼
+             ┌───────────────┐   ┌─────────────────────────────────────────────────┐
+             │  Deployment   │   │ Docker Container (Mapped: -p 3003:3000)         │
+             │   Dashboard   │   │                                                 │
+             │  (Local Node) │   │   ┌─────────────────────────────────────────┐   │
+             └───────────────┘   │   │ Unified Express Server (server.ts)      │   │
+                                 │   │ Listens internally on Port 3000         │   │
+                                 │   └──────┬───────────────────────────┬──────┘   │
+                                 │          │                           │          │
+                                 │  Routes: /api/*, /docs               │ Static   │
+                                 │  (Proxy to 127.0.0.1:8001)           │ files    │
+                                 │          │                           │ (dist/)  │
+                                 │          ▼                           ▼          │
+                                 │   ┌────────────────────┐      ┌─────────────┐   │
+                                 │   │  FastAPI Backend   │      │ React 19    │   │
+                                 │   │  (Python 3.10)     │      │ Production  │   │
+                                 │   │  Bound: 8001       │      │ SPA         │   │
+                                 │   └──────────┬─────────┘      └─────────────┘   │
+                                 │              │                                  │
+                                 │              ▼                                  │
+                                 │   ┌────────────────────┐                        │
+                                 │   │ SQLite Database    │                        │
+                                 │   │ (/app/data/exp.db) │                        │
+                                 │   └────────────────────┘                        │
+                                 └─────────────────────────────────────────────────┘
+```
+
+### Phase 1: Context Evaluation & Volume Provisioning
+1. **Reads `docker-compose.yml`**: Discovers the service declaration, container name (`pet-app-local`), environment flags, and port mapping (`3003:3000`).
+2. **Provisions Persistent Volume**:
+   - Creates a Docker volume named `pet-data` (driver: `local`).
+   - Mounts `pet-data` to `/app/data` inside the container so all logged transactions survive container stops, restarts, and image updates.
+
+### Phase 2: Multi-Stage Dockerfile Compilation
+1. **Builder Stage (`node:20-bookworm-slim AS builder`)**:
+   - Installs system packages: `python3`, `python3-pip`, `sqlite3`, `curl`.
+   - Installs Python dependencies (`fastapi==0.115.6`, `uvicorn==0.34.0`, `pydantic==2.10.4`).
+   - Copies `package.json` and executes `npm ci` for deterministic Node packages.
+   - Copies application source code (`backend/`, `src/`, `server.ts`).
+   - Executes `npm run build`:
+     - **Vite** compiles and minifies the React 19 SPA into static assets in `/app/dist/` (`index.html`, CSS, JS chunks).
+     - **esbuild** bundles `server.ts` into a single standalone CommonJS file at `/app/dist/server.cjs`.
+2. **Runner Stage (`node:20-bookworm-slim AS runner`)**:
+   - Creates a lightweight, clean container image without build tools or temporary caches.
+   - Installs Python runtime dependencies and runtime Node modules (`npm ci --omit=dev`).
+   - Copies the compiled `/app/dist/` directory and `/app/backend/` directory.
+   - Sets environment variables: `NODE_ENV=production`, `PORT=3000`, `PYTHONUNBUFFERED=1`.
+
+### Phase 3: Container Instantiation & Port Binding
+1. Attaches the container to the Docker default bridge network.
+2. Sets up Linux kernel NAT forwarding: maps **Host Port `3003`** → **Container Port `3000`**.
+   *(This ensures your local dev tools on port 3000 and the dashboard on port 3002 never conflict with the container).*
+
+### Phase 4: Entrypoint Launch (`node dist/server.cjs`)
+1. The container runs `node dist/server.cjs` as its primary process (PID 1).
+2. Node initializes the bundled Express server.
+
+### Phase 5: Python FastAPI Subprocess Spawn & Supervision
+1. `server.ts` immediately spawns the Python backend as a managed child process:
+   ```bash
+   python3 -m uvicorn backend.main:app --host 127.0.0.1 --port 8001
+   ```
+2. Pipes Python's standard output and error into the container's stdout, providing unified logs via `docker compose logs -f`.
+3. Attaches `SIGTERM` and `SIGINT` traps: when you run `docker compose down`, both Node and Python are gracefully terminated.
+
+### Phase 6: SQLite Database Schema & PRAGMA Initialization
+1. FastAPI connects to SQLite at `/app/data/expenses.db`.
+2. Automatically creates tables if not already present:
+   - `categories` (pre-populated with default categories)
+   - `expenses` (with multi-currency check constraints)
+3. Applies SQLite PRAGMAs:
+   - `PRAGMA foreign_keys = ON;` (relational integrity enforcement)
+   - `PRAGMA journal_mode = WAL;` (Write-Ahead Logging for high-throughput concurrency)
+
+### Phase 7: Reverse Proxy & Static Asset Serving
+1. The Express server binds to `0.0.0.0:3000` inside the container.
+2. Any request to `/api/*` or `/docs` is transparently reverse-proxied over internal loopback to `http://127.0.0.1:8001`.
+3. Any other request serves the compiled React 19 single-page application from `/app/dist/`, handling client-side SPA routing.
+
+### Phase 8: Docker Healthcheck Verification
+1. Docker initiates healthcheck probes every 15 seconds:
+   ```bash
+   curl -f http://localhost:3000/api/health || exit 1
+   ```
+2. The probe tests the entire stack end-to-end:
+   `Host/Docker -> Express (3000) -> Internal Proxy -> FastAPI (8001) -> SQLite DB query -> 200 OK`.
+3. Once verified, the container achieves `healthy` status in `docker ps`.

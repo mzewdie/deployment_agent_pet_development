@@ -17,7 +17,7 @@ export default function App() {
     ref: '3864c379f1a6cbddbe7cdfe08d1858f056f681aa',
     imageName: 'pet-app',
     imageTag: 'local-test',
-    port: 3002,
+    port: 3003,
     envVars: [
       { key: 'NODE_ENV', value: 'production' },
       { key: 'PYTHONUNBUFFERED', value: '1' }
@@ -36,7 +36,7 @@ export default function App() {
     {
       id: 'ports_available',
       label: 'Required Ports Bound',
-      description: 'Host port 3002 mapped to container port 3000 (prevents conflicts with dev port 3000); FastAPI port 8001 proxied internally.',
+      description: 'Host port 3003 mapped to container port 3000 for Docker (avoids port 3000 conflicts; leaves 3002 for Dashboard); FastAPI port 8001 proxied internally.',
       status: 'passed',
     },
     {
@@ -131,8 +131,8 @@ export default function App() {
   ]);
 
   const [manualActions, setManualActions] = useState<string[]>([
-    'To run on a host system with Docker Engine: run "docker compose up -d --build" or "docker build -t pet-app:local-test . && docker run -d -p 3000:3000 pet-app:local-test".',
-    'Verify container status via "curl -f http://localhost:3000/api/health".',
+    'To run on a host system with Docker Engine: run "docker compose up -d --build" or "docker build -t pet-app:local-test . && docker run -d -p 3003:3000 pet-app:local-test".',
+    'Verify container status via "curl -f http://localhost:3003/api/health".',
   ]);
 
   const handleExecuteRun = () => {
