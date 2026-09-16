@@ -1,6 +1,6 @@
 import React from 'react';
 import { CheckCircle2, Clock, XCircle, ArrowRight } from 'lucide-react';
-import { DeploymentStatus } from '../types';
+import { DeploymentStatus } from '../../types';
 
 interface WorkflowTrackerProps {
   currentStep: number;

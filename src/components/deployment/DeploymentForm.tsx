@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { GitBranch, GitCommit, Layers, Play, Plus, Trash2, AlertCircle } from 'lucide-react';
-import { DeploymentConfig } from '../types';
+import { DeploymentConfig } from '../../types';
 
 interface DeploymentFormProps {
   config: DeploymentConfig;

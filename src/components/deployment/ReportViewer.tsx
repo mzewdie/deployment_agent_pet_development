@@ -1,6 +1,6 @@
 import React from 'react';
 import { CheckCircle2, XCircle, AlertTriangle, Info, Terminal, Activity } from 'lucide-react';
-import { DeploymentConfig, DeploymentStatus, VerificationCheck, DeploymentLog } from '../types';
+import { DeploymentConfig, DeploymentStatus, VerificationCheck, DeploymentLog } from '../../types';
 
 interface ReportViewerProps {
   status: DeploymentStatus;

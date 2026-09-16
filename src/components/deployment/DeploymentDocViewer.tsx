@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Copy, Check, FileText, Code, FileCode } from 'lucide-react';
-import { DeploymentConfig } from '../types';
-import { SPECIFICATION_MARKDOWN } from '../data/specification';
+import { DeploymentConfig } from '../../types';
+import { SPECIFICATION_MARKDOWN } from '../../data/specification';
 
 interface DeploymentDocViewerProps {
   config: DeploymentConfig;
