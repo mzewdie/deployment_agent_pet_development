@@ -66,7 +66,7 @@ COPY --from=builder /app/backend ./backend
 # Copy package.json for runtime metadata
 COPY --from=builder /app/package.json ./package.json
 
-EXPOSE 3000
+EXPOSE 3000 8001
 
 # Health check verifies that both Express proxy and FastAPI backend are operational
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \

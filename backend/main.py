@@ -42,6 +42,7 @@ app.add_middleware(
 )
 
 @app.get("/api/health")
+@app.get("/health")
 def health_check():
     """Health check endpoint confirming API status and database connectivity."""
     with get_db() as conn:

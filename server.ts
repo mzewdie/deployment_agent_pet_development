@@ -32,11 +32,11 @@ async function ensureFastApiBackend(): Promise<void> {
     return;
   }
 
-  console.log(`[Backend] Spawning Python FastAPI backend on 127.0.0.1:${FASTAPI_PORT}...`);
+  console.log(`[Backend] Spawning Python FastAPI backend on 0.0.0.0:${FASTAPI_PORT}...`);
   pythonProcess = spawn('python3', [
     '-m', 'uvicorn',
     'backend.main:app',
-    '--host', '127.0.0.1',
+    '--host', '0.0.0.0',
     '--port', String(FASTAPI_PORT)
   ], {
     cwd: process.cwd(),
@@ -86,9 +86,13 @@ async function startServer() {
     }
   });
 
-  app.use('/api', apiProxy);
-  app.use('/docs', apiProxy);
-  app.use('/openapi.json', apiProxy);
+  // Proxy API and documentation routes to Python FastAPI backend preserving exact paths
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/docs') || req.path === '/openapi.json') {
+      return apiProxy(req, res, next);
+    }
+    next();
+  });
 
   // Vite integration
   if (process.env.NODE_ENV !== 'production') {
